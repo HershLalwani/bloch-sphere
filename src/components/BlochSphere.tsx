@@ -12,11 +12,39 @@ export interface GateAction {
 interface BlochSphereProps {
   gateQueue: GateAction[];
   onGateComplete: (id: number) => void;
+  targetVector?: THREE.Vector3;
+  epsilon?: number;
 }
 
-export function BlochSphere({ gateQueue, onGateComplete }: BlochSphereProps) {
+export function BlochSphere({ gateQueue, onGateComplete, targetVector, epsilon }: BlochSphereProps) {
   const arrowRef = useRef<THREE.Group>(null);
-  const [trail, setTrail] = useState<THREE.Vector3[]>(() => [new THREE.Vector3(0, 0, 2)]);
+  const [trail, setTrail] = useState<THREE.Vector3[]>(() => [new THREE.Vector3(0, 0, 1)]);
+
+  // Calculate the epsilon circle parameters
+  const targetCircle = useMemo(() => {
+    if (!targetVector || !epsilon) return null;
+    
+    const R = 1; // sphere radius (unit sphere)
+    // The epsilon input is a Euclidean distance between the tips of vectors of length R.
+    // For two vectors of length R with angle alpha between them, the Euclidean distance d is:
+    // d = sqrt(R^2 + R^2 - 2*R*R*cos(alpha)) = sqrt(2*R^2(1 - cos(alpha))) = sqrt(4*R^2*sin^2(alpha/2)) = 2*R*sin(alpha/2)
+    // So alpha = 2 * asin(d / (2 * R))
+    const d = Math.min(epsilon, 2 * R); // distance cannot exceed diameter
+    const alpha = 2 * Math.asin(d / (2 * R));
+    
+    // Radius of the flat circle: r = R * sin(alpha)
+    const circleRadius = R * Math.sin(alpha);
+    // Distance from sphere center to circle center: h = R * cos(alpha)
+    const h = R * Math.cos(alpha);
+    
+    // Center of the circle in 3D space
+    const circleCenter = targetVector.clone().normalize().multiplyScalar(h);
+    
+    // Create a orientation for the circle (look at the target)
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), targetVector.clone().normalize());
+    
+    return { circleRadius, circleCenter, quaternion };
+  }, [targetVector, epsilon]);
 
   // The actual mathematical state
   const currentQuaternion = useMemo(() => new THREE.Quaternion(), []);
@@ -83,7 +111,7 @@ export function BlochSphere({ gateQueue, onGateComplete }: BlochSphereProps) {
         animState.current.active = false;
 
         // Calculate the vector's tip position by rotating [0, 0, 2] with the final quaternion
-        const dotPosition = new THREE.Vector3(0, 0, 2).applyQuaternion(tempQ);
+        const dotPosition = new THREE.Vector3(0, 0, 1).applyQuaternion(tempQ);
         // Leave a dot at the finished location
         setTrail((prev) => [...prev, dotPosition]);
 
@@ -95,36 +123,57 @@ export function BlochSphere({ gateQueue, onGateComplete }: BlochSphereProps) {
   return (
     <group>
       {/* The Sphere */}
-      <Sphere args={[2, 32, 32]}>
+      <Sphere args={[1, 32, 32]}>
         <meshStandardMaterial color="#88ccff" transparent opacity={0.2} wireframe />
       </Sphere>
 
       {/* Axes */}
-      <Line points={[[-2.5, 0, 0], [2.5, 0, 0]]} color="red" lineWidth={1} />
-      <Line points={[[0, -2.5, 0], [0, 2.5, 0]]} color="green" lineWidth={1} />
-      <Line points={[[0, 0, -2.5], [0, 0, 2.5]]} color="blue" lineWidth={1} />
+      <Line points={[[-1.5, 0, 0], [1.5, 0, 0]]} color="red" lineWidth={1} />
+      <Line points={[[0, -1.5, 0], [0, 1.5, 0]]} color="green" lineWidth={1} />
+      <Line points={[[0, 0, -1.5], [0, 0, 1.5]]} color="blue" lineWidth={1} />
 
       {/* Axis Labels */}
-      <Text position={[2.7, 0, 0]} color="red" fontSize={0.2}>X</Text>
-      <Text position={[0, 2.7, 0]} color="green" fontSize={0.2}>Y</Text>
-      <Text position={[0, 0, 2.7]} color="blue" fontSize={0.2}>Z (|0⟩)</Text>
-      <Text position={[0, 0, -2.7]} color="blue" fontSize={0.2}>-Z (|1⟩)</Text>
+      <Text position={[1.7, 0, 0]} color="red" fontSize={0.1}>X</Text>
+      <Text position={[0, 1.7, 0]} color="green" fontSize={0.1}>Y</Text>
+      <Text position={[0, 0, 1.7]} color="blue" fontSize={0.1}>Z (|0⟩)</Text>
+      <Text position={[0, 0, -1.7]} color="blue" fontSize={0.1}>-Z (|1⟩)</Text>
 
       {/* Equator Lines for visual reference */}
-      <Line points={Array.from({ length: 65 }).map((_, i) => [2 * Math.cos(i * Math.PI / 32), 2 * Math.sin(i * Math.PI / 32), 0])} color="#ffffff" opacity={0.3} transparent />
-      <Line points={Array.from({ length: 65 }).map((_, i) => [2 * Math.cos(i * Math.PI / 32), 0, 2 * Math.sin(i * Math.PI / 32)])} color="#ffffff" opacity={0.3} transparent />
-      <Line points={Array.from({ length: 65 }).map((_, i) => [0, 2 * Math.cos(i * Math.PI / 32), 2 * Math.sin(i * Math.PI / 32)])} color="#ffffff" opacity={0.3} transparent />
+      <Line points={Array.from({ length: 65 }).map((_, i) => [Math.cos(i * Math.PI / 32), Math.sin(i * Math.PI / 32), 0])} color="#ffffff" opacity={0.3} transparent />
+      <Line points={Array.from({ length: 65 }).map((_, i) => [Math.cos(i * Math.PI / 32), 0, Math.sin(i * Math.PI / 32)])} color="#ffffff" opacity={0.3} transparent />
+      <Line points={Array.from({ length: 65 }).map((_, i) => [0, Math.cos(i * Math.PI / 32), Math.sin(i * Math.PI / 32)])} color="#ffffff" opacity={0.3} transparent />
+
+      {/* Target Point & Epsilon Circle */}
+      {targetVector && (
+        <group>
+          {/* Target Point */}
+          <Sphere args={[0.01, 8, 8]} position={targetVector}>
+            <meshBasicMaterial color="#ff4444" />
+          </Sphere>
+          
+          {/* Epsilon Circle */}
+          {targetCircle && (
+            <mesh 
+              position={targetCircle.circleCenter} 
+              quaternion={targetCircle.quaternion}
+            >
+              <ringGeometry args={[targetCircle.circleRadius, targetCircle.circleRadius + 0.02, 64]} />
+              <meshBasicMaterial color="#ff4444" transparent opacity={0.5} side={THREE.DoubleSide} />
+            </mesh>
+          )}
+        </group>
+      )}
 
       {/* State Vector Arrow */}
       {/* Group is rotated so the child geometries align along Z axis by default (representing |0>) */}
       <group ref={arrowRef}>
         <group rotation={[Math.PI / 2, 0, 0]}>
-          <mesh position={[0, 1, 0]}>
-            <cylinderGeometry args={[0.02, 0.02, 2]} />
+          <mesh position={[0, 0.43, 0]}>
+            <cylinderGeometry args={[0.01, 0.01, 0.9]} />
             <meshBasicMaterial color="#ff00ff" />
           </mesh>
-          <mesh position={[0, 2, 0]}>
-            <coneGeometry args={[0.1, 0.2]} />
+          <mesh position={[0, 0.93, 0]}>
+            <coneGeometry args={[0.02, 0.10]} />
             <meshBasicMaterial color="#ff00ff" />
           </mesh>
         </group>
@@ -132,7 +181,7 @@ export function BlochSphere({ gateQueue, onGateComplete }: BlochSphereProps) {
 
       {/* Trail Dots */}
       {trail.map((pos, i) => (
-        <Sphere key={i} args={[0.06, 16, 16]} position={pos}>
+        <Sphere key={i} args={[0.03, 16, 16]} position={pos}>
           <meshBasicMaterial color="#ffff00" />
         </Sphere>
       ))}
