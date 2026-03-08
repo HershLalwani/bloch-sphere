@@ -9,6 +9,7 @@ import './index.css';
 function App() {
   const [gateQueue, setGateQueue] = useState<GateAction[]>([]);
   const [resetFlag, setResetFlag] = useState(0);
+  const [customSequence, setCustomSequence] = useState('');
   
   // Solovay-Kitaev Approximation State
   const [targetTheta, setTargetTheta] = useState(90);
@@ -39,6 +40,49 @@ function App() {
   const applyRx2 = () => applyGate(new THREE.Vector3(1, 0, 0), Math.PI / 2);
   const applyRy2 = () => applyGate(new THREE.Vector3(0, 1, 0), Math.PI / 2);
   const applyRz2 = () => applyGate(Z_AXIS, Math.PI / 2);
+
+  const applyCustomSequence = () => {
+    const chars = customSequence.split('');
+    const newGates: GateAction[] = [];
+    
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i].toUpperCase();
+      let axis: THREE.Vector3 | undefined;
+      let angle = 0;
+
+      if (char === 'H') { axis = H_AXIS; angle = Math.PI; }
+      else if (char === 'T') {
+        axis = Z_AXIS;
+        if (chars[i+1] === '†' || chars[i+1] === '!' || chars[i+1] === 'i') {
+          angle = -Math.PI / 4;
+          i++;
+        } else {
+          angle = Math.PI / 4;
+        }
+      }
+      else if (char === 'S') {
+        axis = Z_AXIS;
+        if (chars[i+1] === '†' || chars[i+1] === '!' || chars[i+1] === 'i') {
+          angle = -Math.PI / 2;
+          i++;
+        } else {
+          angle = Math.PI / 2;
+        }
+      }
+      else if (char === 'X') { axis = new THREE.Vector3(1, 0, 0); angle = Math.PI; }
+      else if (char === 'Y') { axis = new THREE.Vector3(0, 1, 0); angle = Math.PI; }
+      else if (char === 'Z') { axis = Z_AXIS; angle = Math.PI; }
+
+      if (axis) {
+        newGates.push({ axis, angle, id: Date.now() + Math.random() + i });
+      }
+    }
+    
+    if (newGates.length > 0) {
+      setGateQueue((prev) => [...prev, ...newGates]);
+      setCustomSequence('');
+    }
+  };
 
   const solveSK = () => {
     setIsSearching(true);
@@ -199,6 +243,25 @@ function App() {
           <button className={gateBtn} onClick={applyRx2} title="Rx(π/2)">Rx</button>
           <button className={gateBtn} onClick={applyRy2} title="Ry(π/2)">Ry</button>
           <button className={gateBtn} onClick={applyRz2} title="Rz(π/2)">Rz</button>
+        </div>
+
+        <div className="mt-6 flex flex-col">
+          <span className="text-[0.75rem] uppercase tracking-widest text-[#666] mb-3">Custom Sequence</span>
+          <div className="flex flex-col gap-2">
+            <input
+              className="w-full bg-[#222] border border-[#333] text-white px-3 py-2 rounded text-sm font-mono placeholder-[#555] focus:border-[#646cff] outline-none"
+              placeholder="e.g. HTHT"
+              value={customSequence}
+              onChange={(e) => setCustomSequence(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && applyCustomSequence()}
+            />
+            <button
+              className="w-full h-8 text-[0.85rem] rounded border border-[#444] bg-[#333] text-[#e0e0e0] cursor-pointer transition-all hover:bg-[#444] hover:border-[#646cff]"
+              onClick={applyCustomSequence}
+            >
+              Apply Sequence
+            </button>
+          </div>
         </div>
 
         {/* Solovay–Kitaev panel */}
