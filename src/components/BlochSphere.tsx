@@ -1,6 +1,6 @@
 import { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Sphere, Line, Text } from '@react-three/drei';
+import { Sphere, Line, Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 
 export interface GateAction {
@@ -14,11 +14,22 @@ interface BlochSphereProps {
   onGateComplete: (id: number) => void;
   targetVector?: THREE.Vector3;
   epsilon?: number;
+  animationSpeed?: number;
+  dotSize?: number;
+  startState?: THREE.Vector3;
 }
 
-export function BlochSphere({ gateQueue, onGateComplete, targetVector, epsilon }: BlochSphereProps) {
+export function BlochSphere({ 
+  gateQueue, 
+  onGateComplete, 
+  targetVector, 
+  epsilon,
+  animationSpeed = 1,
+  dotSize = 0.03,
+  startState = new THREE.Vector3(0, 0, 1)
+}: BlochSphereProps) {
   const arrowRef = useRef<THREE.Group>(null);
-  const [trail, setTrail] = useState<THREE.Vector3[]>(() => [new THREE.Vector3(0, 0, 1)]);
+  const [trail, setTrail] = useState<THREE.Vector3[]>(() => [startState.clone()]);
 
   // Calculate the epsilon circle parameters
   const targetCircle = useMemo(() => {
@@ -47,7 +58,19 @@ export function BlochSphere({ gateQueue, onGateComplete, targetVector, epsilon }
   }, [targetVector, epsilon]);
 
   // The actual mathematical state
-  const currentQuaternion = useMemo(() => new THREE.Quaternion(), []);
+  const currentQuaternion = useMemo(() => {
+    return new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1),
+      startState.clone().normalize()
+    );
+  }, [startState]);
+
+  // Set the arrow rotation to the start state when component mounts or start state changes
+  useEffect(() => {
+    if (arrowRef.current) {
+      arrowRef.current.quaternion.copy(currentQuaternion);
+    }
+  }, [currentQuaternion]);
 
   // Animation state
   const animState = useRef<{
@@ -83,7 +106,7 @@ export function BlochSphere({ gateQueue, onGateComplete, targetVector, epsilon }
 
   useFrame((_state, delta) => {
     if (animState.current.active) {
-      const speed = Math.PI * 1.5; // radians per second
+      const speed = Math.PI * 1.5 * animationSpeed; // radians per second
       let stepAngle = speed * delta;
       const remaining = Math.abs(animState.current.targetAngle) - Math.abs(animState.current.currentAngle);
 
@@ -133,10 +156,18 @@ export function BlochSphere({ gateQueue, onGateComplete, targetVector, epsilon }
       <Line points={[[0, 0, -1.5], [0, 0, 1.5]]} color="blue" lineWidth={1} />
 
       {/* Axis Labels */}
-      <Text position={[1.7, 0, 0]} color="red" fontSize={0.1}>X</Text>
-      <Text position={[0, 1.7, 0]} color="green" fontSize={0.1}>Y</Text>
-      <Text position={[0, 0, 1.7]} color="blue" fontSize={0.1}>Z (|0⟩)</Text>
-      <Text position={[0, 0, -1.7]} color="blue" fontSize={0.1}>-Z (|1⟩)</Text>
+      <Billboard position={[1.7, 0, 0]}>
+        <Text color="red" fontSize={0.1}>X</Text>
+      </Billboard>
+      <Billboard position={[0, 1.7, 0]}>
+        <Text color="green" fontSize={0.1}>Y</Text>
+      </Billboard>
+      <Billboard position={[0, 0, 1.7]}>
+        <Text color="blue" fontSize={0.1}>Z (|0⟩)</Text>
+      </Billboard>
+      <Billboard position={[0, 0, -1.7]}>
+        <Text color="blue" fontSize={0.1}>-Z (|1⟩)</Text>
+      </Billboard>
 
       {/* Equator Lines for visual reference */}
       <Line points={Array.from({ length: 65 }).map((_, i) => [Math.cos(i * Math.PI / 32), Math.sin(i * Math.PI / 32), 0])} color="#ffffff" opacity={0.3} transparent />
@@ -176,12 +207,16 @@ export function BlochSphere({ gateQueue, onGateComplete, targetVector, epsilon }
             <coneGeometry args={[0.02, 0.10]} />
             <meshBasicMaterial color="#ff00ff" />
           </mesh>
+          {/* Dot at the tip of the vector */}
+          <Sphere args={[dotSize, 16, 16]} position={[0, 1, 0]}>
+            <meshBasicMaterial color="#ffff00" />
+          </Sphere>
         </group>
       </group>
 
       {/* Trail Dots */}
       {trail.map((pos, i) => (
-        <Sphere key={i} args={[0.03, 16, 16]} position={pos}>
+        <Sphere key={i} args={[dotSize, 16, 16]} position={pos}>
           <meshBasicMaterial color="#ffff00" />
         </Sphere>
       ))}
